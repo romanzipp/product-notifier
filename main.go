@@ -96,7 +96,7 @@ func main() {
 
 	sizes := strings.Split(os.Getenv("SIZES"), ",")
 
-	log.Printf("Searching for sizes %s\n", strings.Join(sizes, ", "))
+	fmt.Printf("searching for sizes %s\n", strings.Join(sizes, ", "))
 
 	for {
 		check(sizes)
