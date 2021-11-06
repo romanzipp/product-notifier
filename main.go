@@ -119,7 +119,9 @@ func check(csizes []string) {
 
 	res, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("error sending request")
+		log.Println(err)
+		return
 	}
 
 	if res.Body != nil {
