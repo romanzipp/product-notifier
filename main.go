@@ -55,8 +55,8 @@ func notify(size Size) {
 
 	msg := struct {
 		Title string
-		Body string
-		Url string
+		Body  string
+		Url   string
 	}{"Nike Air Force VERFÜGBAR 👟", fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize), os.Getenv("NIKE_URL")}
 
 	go func() {
@@ -93,17 +93,21 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	sizes := strings.Split(os.Getenv("SIZES"), ",")
+
+	log.Printf("Searching for sizes %s\n", strings.Join(sizes, ", "))
+
 	for {
-		check()
+		check(sizes)
 		time.Sleep(10 * time.Second)
 	}
 }
 
-func check() {
-	search := map[string]bool{
-		"44":   true,
-		"44.5": true,
-		"39":   true,
+func check(csizes []string) {
+	search := make(map[string]bool)
+
+	for _, csize := range csizes {
+		search[csize] = true
 	}
 
 	client := http.Client{
