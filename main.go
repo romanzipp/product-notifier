@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	gosxnotifier "github.com/deckarep/gosx-notifier"
+	"github.com/gregdel/pushover"
+	"github.com/joho/godotenv"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 )
-
-const url = "https://www.nike.com/de/t/air-force-1-luxe-herrenschuh-86CTL1"
 
 type Content struct {
 	Threads struct {
@@ -45,26 +46,53 @@ type Size struct {
 	Available bool
 }
 
-func notify(size Size){
+func notify(size Size) {
 	fmt.Println(strings.Repeat("#", 120))
 	fmt.Println(strings.Repeat("#", 120))
 	fmt.Printf("\n  %s VERFÜGBAR \n\n", size.EuSize)
 	fmt.Println(strings.Repeat("#", 120))
 	fmt.Println(strings.Repeat("#", 120))
 
-	note := gosxnotifier.NewNotification(fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize))
-	note.Title = "Nike Air Force VERFÜGBAR 👟"
-	note.Sound = gosxnotifier.Sosumi
-	note.Group = "com.nike.go"
-	note.Sender = "com.apple.Safari"
-	note.Link = url
+	msg := struct {
+		Title string
+		Body string
+		Url string
+	}{"Nike Air Force VERFÜGBAR 👟", fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize), os.Getenv("NIKE_URL")}
 
-	if err := note.Push(); err != nil {
-		log.Println("Uh oh!")
-	}
+	go func() {
+		note := gosxnotifier.NewNotification(msg.Body)
+		note.Title = msg.Title
+		note.Sound = gosxnotifier.Sosumi
+		note.Group = "com.nike.go"
+		note.Sender = "com.apple.Safari"
+		note.Link = os.Getenv("NIKE_URL")
+
+		if err := note.Push(); err != nil {
+			log.Println("error sending macos notification")
+			log.Println(err)
+		}
+	}()
+
+	go func() {
+		app := pushover.New(os.Getenv("PUSHOVER_APP_TOKEN"))
+		recipient := pushover.NewRecipient(os.Getenv("PUSHOVER_USER_TOKEN"))
+
+		message := pushover.NewMessage(msg.Body)
+		message.Title = msg.Title
+		message.URL = msg.Url
+
+		if _, err := app.SendMessage(message, recipient); err != nil {
+			log.Println("error sending pushover notification")
+			log.Println(err)
+		}
+	}()
 }
 
-func main(){
+func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
+	}
+
 	for {
 		check()
 		time.Sleep(10 * time.Second)
@@ -75,14 +103,14 @@ func check() {
 	search := map[string]bool{
 		"44":   true,
 		"44.5": true,
-		//"39": true,
+		"39":   true,
 	}
 
 	client := http.Client{
 		Timeout: time.Second * 5,
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req, _ := http.NewRequest(http.MethodGet, os.Getenv("NIKE_URL"), nil)
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -95,21 +123,24 @@ func check() {
 
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		log.Println("error reading response")
+		return
 	}
 
 	reg := regexp.MustCompile(`<script>window\.INITIAL_REDUX_STATE=(.*);</script>`)
 
 	x := reg.FindStringSubmatch(string(body))
 	if len(x) != 2 {
-		log.Fatalln("oh no")
+		log.Println("error finding website content data")
+		return
 	}
 	jc := x[1]
 
 	data := Content{}
 
 	if err = json.Unmarshal([]byte(jc), &data); err != nil {
-		log.Fatal(err)
+		log.Println("error unmarshalling json")
+		return
 	}
 
 	var sizes []Size
