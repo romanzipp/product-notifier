@@ -47,17 +47,18 @@ type Size struct {
 }
 
 func notify(size Size) {
-	fmt.Println(strings.Repeat("#", 120))
-	fmt.Println(strings.Repeat("#", 120))
-	fmt.Printf("\n  %s VERFÜGBAR \n\n", size.EuSize)
-	fmt.Println(strings.Repeat("#", 120))
-	fmt.Println(strings.Repeat("#", 120))
-
 	msg := struct {
 		Title string
 		Body  string
 		Url   string
 	}{"Nike Air Force VERFÜGBAR 👟", fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize), os.Getenv("NIKE_URL")}
+
+	fmt.Println(strings.Repeat("#", 120))
+	fmt.Println(strings.Repeat("#", 120))
+	fmt.Printf("\n  %s\n", msg.Title)
+	fmt.Printf("  %s\n\n", msg.Body)
+	fmt.Println(strings.Repeat("#", 120))
+	fmt.Println(strings.Repeat("#", 120))
 
 	go func() {
 		note := gosxnotifier.NewNotification(msg.Body)
