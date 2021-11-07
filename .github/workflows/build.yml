@@ -1,0 +1,15 @@
+name: Build
+
+on: [push]
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+      - run: go build main.go
+      - uses: actions/upload-artifact@v2
+        with:
+          name: macos
+          path: main
