@@ -13,3 +13,14 @@ jobs:
         with:
           name: macos
           path: main
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+      - run: go build main.go
+      - uses: actions/upload-artifact@v2
+        with:
+          name: linux
+          path: main
