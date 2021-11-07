@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -94,13 +95,15 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
-	sizes := strings.Split(os.Getenv("SIZES"), ",")
+	interval, _ := strconv.ParseInt(os.Getenv("INTERVAL"), 10, 0)
+	fmt.Printf("looping in %d seconds\n", interval)
 
+	sizes := strings.Split(os.Getenv("SIZES"), ",")
 	fmt.Printf("searching for sizes %s\n", strings.Join(sizes, ", "))
 
 	for {
 		check(sizes)
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(interval) * time.Second)
 	}
 }
 
