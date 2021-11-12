@@ -18,13 +18,34 @@ import (
 )
 
 type Product struct {
-	Id            string `json:"id"`
-	Brand         string `json:"brand"`
-	Color         string `json:"colorDescription"`
-	Title         string `json:"title"`
-	FullTitle     string `json:"fullTitle"`
-	FirstImageUrl string `json:"firstImageUrl"`
-	Skus          []struct {
+	Url           string
+	Sizes         []*Size
+	VendorProduct VendorProduct
+}
+
+type Size struct {
+	Id                  string
+	NikeSize            string
+	EuSize              string
+	Available           bool
+	PreviouslyAvailable bool
+}
+
+type VendorData struct {
+	Threads struct {
+		Products map[string]VendorProduct `json:"products"`
+	} `json:"Threads"`
+}
+
+type VendorProduct struct {
+	Id                string `json:"id"`
+	Brand             string `json:"brand"`
+	Color             string `json:"colorDescription"`
+	Title             string `json:"title"`
+	FullTitle         string `json:"fullTitle"`
+	FirstImageUrl     string `json:"firstImageUrl"`
+	LastSizeAvailable string
+	Skus              []struct {
 		Id                  string `json:"id"`
 		NikeSize            string `json:"nikeSize"`
 		SkuId               string `json:"skuId"`
@@ -41,36 +62,215 @@ type Product struct {
 	} `json:"availableSkus"`
 }
 
-type Content struct {
-	Threads struct {
-		Products map[string]Product `json:"products"`
-	} `json:"Threads"`
-}
-
-type Size struct {
-	Id        string
-	NikeSize  string
-	EuSize    string
-	Available bool
-}
-
-func notify(prod Product, size Size) {
-	msg := struct {
-		Title string
-		Body  string
-		Url   string
-	}{
-		Title: fmt.Sprintf("%s VERFÜGBAR 👟", prod.Title),
-		Body:  fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize),
-		Url:   os.Getenv("NIKE_URL"),
+func main() {
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("Error loading .env file")
 	}
 
-	fmt.Println(strings.Repeat("#", 120))
-	fmt.Println(strings.Repeat("#", 120))
-	fmt.Printf("\n  %s\n", msg.Title)
-	fmt.Printf("  %s\n\n", msg.Body)
-	fmt.Println(strings.Repeat("#", 120))
-	fmt.Println(strings.Repeat("#", 120))
+	var products []*Product
+
+	cfgSizes := strings.Split(os.Getenv("SIZES"), ",")
+	cfgUrls := strings.Split(os.Getenv("NIKE_URLS"), ",")
+
+	for _, url := range cfgUrls {
+		product := Product{
+			Url: url,
+		}
+
+		for _, size := range cfgSizes {
+			product.Sizes = append(product.Sizes, &Size{
+				EuSize: size,
+			})
+		}
+
+		products = append(products, &product)
+	}
+
+	interval, _ := strconv.ParseInt(os.Getenv("INTERVAL"), 10, 0)
+	log.Printf("looping in %d seconds\n", interval)
+
+	for {
+		for _, prod := range products {
+			check(prod)
+		}
+
+		time.Sleep(time.Duration(interval) * time.Second)
+	}
+}
+
+func check(prod *Product) {
+	client := http.Client{
+		Timeout: time.Second * 5,
+	}
+
+	// execute request
+	req, _ := http.NewRequest(http.MethodGet, prod.Url, nil)
+	res, err := client.Do(req)
+	if err != nil {
+		log.Println("error sending request")
+		log.Println(err)
+		return
+	}
+
+	if res.Body != nil {
+		defer res.Body.Close()
+	}
+
+	// unpack body stream
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		log.Println("error reading response")
+		return
+	}
+
+	// parse content via regex pattern
+	matches := regexp.MustCompile(`<script>window\.INITIAL_REDUX_STATE=(.*);</script>`).FindStringSubmatch(string(body))
+	if len(matches) != 2 {
+		log.Println("error finding website content data")
+		return
+	}
+
+	content := VendorData{}
+
+	// unpack data to content struct
+	if err = json.Unmarshal([]byte(matches[1]), &content); err != nil {
+		log.Println("error unmarshalling json")
+		return
+	}
+
+	//log.Printf("%v", content)
+
+	// pull the first and hopefully only product from content
+	for _, vendorProduct := range content.Threads.Products {
+		prod.VendorProduct = vendorProduct
+
+		// the products map should only contain one index, so fuck everything else
+		break
+	}
+
+	var tmpSizes []Size
+
+	// iterate through all listed sizes
+	for _, sku := range prod.VendorProduct.Skus {
+		// iterate through all available sizes stored in another map
+		for _, availableSku := range prod.VendorProduct.AvailableSkus {
+			if availableSku.SkuId == sku.SkuId {
+
+				// iterate through configured sizes attached to product and update state if found in availables
+				for _, size := range prod.Sizes {
+					if sku.LocalizedSize == size.EuSize {
+						size.Available = availableSku.Available
+					}
+				}
+
+				tmpSizes = append(tmpSizes, Size{
+					EuSize:    sku.LocalizedSize,
+					Available: availableSku.Available,
+				})
+			}
+		}
+	}
+
+	var found bool
+
+	for _, size := range prod.Sizes {
+		if size.Available {
+			found = true
+		}
+
+		if size.Available != size.PreviouslyAvailable {
+			if size.Available {
+				notify(prod, size, true)
+			} else {
+				notify(prod, size, false)
+			}
+		}
+
+		// store last state so notification dont repeat
+		// and we have the option to notify if sold out
+		size.PreviouslyAvailable = size.Available
+	}
+
+	if !found {
+		var avs []string
+		for _, size := range tmpSizes {
+			if size.Available {
+				avs = append(avs, size.EuSize)
+			}
+		}
+
+		log.Printf("[%s] out of stock... (%s)\n", prod.VendorProduct.Title, strings.Join(avs, ", "))
+	}
+}
+
+func downloadFile(filepath string, url string) (*os.File, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func(Body io.ReadCloser) {
+		if err := Body.Close(); err != nil {
+			log.Println("error closing reader")
+			log.Println(err)
+		}
+	}(resp.Body)
+
+	out, err := os.Create(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func(out *os.File) {
+		if err := out.Close(); err != nil {
+			log.Println("error closing file")
+			log.Println(err)
+		}
+	}(out)
+
+	_, err = io.Copy(out, resp.Body)
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, err
+}
+
+type Message struct {
+	Title        string
+	Body         string
+	Url          string
+	IncludeImage bool
+}
+
+func notify(prod *Product, size *Size, up bool) {
+	var msg Message
+
+	if up {
+		msg = Message{
+			Title:        fmt.Sprintf("⚠️ %s", prod.VendorProduct.Title),
+			Body:         fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize),
+			Url:          os.Getenv("NIKE_URL"),
+			IncludeImage: true,
+		}
+	} else {
+		msg = Message{
+			Title: fmt.Sprintf("%s ausverkauft 🙄", prod.VendorProduct.Title),
+			Body:  fmt.Sprintf("Größe %s nicht mehr verfügbar", size.EuSize),
+			Url:   os.Getenv("NIKE_URL"),
+		}
+	}
+
+	log.Println(strings.Repeat("#", 120))
+	log.Println(strings.Repeat("#", 120))
+	log.Println("")
+	log.Printf("  %s\n", msg.Title)
+	log.Printf("  %s\n", msg.Body)
+	log.Println("")
+	log.Println(strings.Repeat("#", 120))
+	log.Println(strings.Repeat("#", 120))
 
 	go func() {
 		note := gosxnotifier.NewNotification(msg.Body)
@@ -90,21 +290,22 @@ func notify(prod Product, size Size) {
 		app := pushover.New(os.Getenv("PUSHOVER_APP_TOKEN"))
 		recipient := pushover.NewRecipient(os.Getenv("PUSHOVER_USER_TOKEN"))
 
-		thumb := fmt.Sprintf("%s.png", prod.Id)
-
-		file, err := os.Open(thumb)
-
-		if err != nil && prod.FirstImageUrl != "" {
-			file, err = downloadFile(thumb, prod.FirstImageUrl)
-		}
-
 		message := pushover.NewMessage(msg.Body)
 		message.Title = msg.Title
 		message.URL = msg.Url
 
-		if err := message.AddAttachment(file); err != nil {
-			log.Println("error attaching pushover file")
-			log.Println(err)
+		if msg.IncludeImage {
+			thumb := fmt.Sprintf("%s.png", prod.VendorProduct.Id)
+			file, err := os.Open(thumb)
+
+			if err != nil && prod.VendorProduct.FirstImageUrl != "" {
+				file, err = downloadFile(thumb, prod.VendorProduct.FirstImageUrl)
+			}
+
+			if err := message.AddAttachment(file); err != nil {
+				log.Println("error attaching pushover file")
+				log.Println(err)
+			}
 		}
 
 		if _, err := app.SendMessage(message, recipient); err != nil {
@@ -112,139 +313,4 @@ func notify(prod Product, size Size) {
 			log.Println(err)
 		}
 	}()
-}
-
-func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	urls := strings.Split(os.Getenv("NIKE_URLS"), ",")
-
-	interval, _ := strconv.ParseInt(os.Getenv("INTERVAL"), 10, 0)
-	fmt.Printf("looping in %d seconds\n", interval)
-
-	sizes := strings.Split(os.Getenv("SIZES"), ",")
-	fmt.Printf("searching for sizes %s\n", strings.Join(sizes, ", "))
-
-	for {
-		for _, url := range urls {
-			check(url, sizes)
-		}
-
-		time.Sleep(time.Duration(interval) * time.Second)
-	}
-}
-
-func check(url string, csizes []string) {
-	search := make(map[string]bool)
-
-	for _, csize := range csizes {
-		search[csize] = true
-	}
-
-	client := http.Client{
-		Timeout: time.Second * 5,
-	}
-
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-
-	res, err := client.Do(req)
-	if err != nil {
-		log.Println("error sending request")
-		log.Println(err)
-		return
-	}
-
-	if res.Body != nil {
-		defer res.Body.Close()
-	}
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		log.Println("error reading response")
-		return
-	}
-
-	reg := regexp.MustCompile(`<script>window\.INITIAL_REDUX_STATE=(.*);</script>`)
-
-	x := reg.FindStringSubmatch(string(body))
-	if len(x) != 2 {
-		log.Println("error finding website content data")
-		return
-	}
-	jc := x[1]
-
-	data := Content{}
-
-	if err = json.Unmarshal([]byte(jc), &data); err != nil {
-		log.Println("error unmarshalling json")
-		return
-	}
-
-	var sizes []Size
-
-	for _, prod := range data.Threads.Products {
-
-		for _, sku := range prod.Skus {
-
-			tsize := Size{
-				Id:       sku.SkuId,
-				NikeSize: sku.NikeSize,
-				EuSize:   sku.LocalizedSize,
-			}
-
-			for _, asku := range prod.AvailableSkus {
-				if asku.SkuId == tsize.Id {
-					tsize.Available = asku.Available
-					break
-				}
-			}
-
-			sizes = append(sizes, tsize)
-		}
-
-		var found bool
-
-		for _, size := range sizes {
-			if search[size.EuSize] && size.Available {
-				notify(prod, size)
-				found = true
-			}
-		}
-
-		if !found {
-			var avs []string
-			for _, size := range sizes {
-				if size.Available {
-					avs = append(avs, size.EuSize)
-				}
-			}
-
-			fmt.Printf("[%s] out of stock... (%s)\n", prod.Title, strings.Join(avs, ", "))
-		}
-	}
-}
-
-func downloadFile(filepath string, url string) (*os.File, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	out, err := os.Create(filepath)
-	if err != nil {
-		return nil, err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-
-	file, err := os.Open(filepath)
-	if err != nil {
-		return nil, err
-	}
-
-	return file, err
 }
