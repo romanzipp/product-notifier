@@ -6,6 +6,7 @@ import (
 	gosxnotifier "github.com/deckarep/gosx-notifier"
 	"github.com/gregdel/pushover"
 	"github.com/joho/godotenv"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -16,27 +17,33 @@ import (
 	"time"
 )
 
+type Product struct {
+	Id            string `json:"id"`
+	Brand         string `json:"brand"`
+	Color         string `json:"colorDescription"`
+	Title         string `json:"title"`
+	FullTitle     string `json:"fullTitle"`
+	FirstImageUrl string `json:"firstImageUrl"`
+	Skus          []struct {
+		Id                  string `json:"id"`
+		NikeSize            string `json:"nikeSize"`
+		SkuId               string `json:"skuId"`
+		LocalizedSize       string `json:"localizedSize"`
+		LocalizedSizePrefix string `json:"localizedSizePrefix"`
+	} `json:"skus"`
+	AvailableSkus []struct {
+		Id           string `json:"id"`
+		ProductId    string `json:"productId"`
+		ResourceType string `json:"resourceType"`
+		Available    bool   `json:"available"`
+		Level        string `json:"level"`
+		SkuId        string `json:"skuId"`
+	} `json:"availableSkus"`
+}
+
 type Content struct {
 	Threads struct {
-		Products struct {
-			AirForceOne struct {
-				Skus []struct {
-					Id                  string `json:"id"`
-					NikeSize            string `json:"nikeSize"`
-					SkuId               string `json:"skuId"`
-					LocalizedSize       string `json:"localizedSize"`
-					LocalizedSizePrefix string `json:"localizedSizePrefix"`
-				} `json:"skus"`
-				AvailableSkus []struct {
-					Id           string `json:"id"`
-					ProductId    string `json:"productId"`
-					ResourceType string `json:"resourceType"`
-					Available    bool   `json:"available"`
-					Level        string `json:"level"`
-					SkuId        string `json:"skuId"`
-				} `json:"availableSkus"`
-			} `json:"DD9605-100"`
-		} `json:"products"`
+		Products map[string]Product `json:"products"`
 	} `json:"Threads"`
 }
 
@@ -47,12 +54,16 @@ type Size struct {
 	Available bool
 }
 
-func notify(size Size) {
+func notify(prod Product, size Size) {
 	msg := struct {
 		Title string
 		Body  string
 		Url   string
-	}{"Nike Air Force VERFÜGBAR 👟", fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize), os.Getenv("NIKE_URL")}
+	}{
+		Title: fmt.Sprintf("%s VERFÜGBAR 👟", prod.Title),
+		Body:  fmt.Sprintf("Größe %s jetzt verfügbar", size.EuSize),
+		Url:   os.Getenv("NIKE_URL"),
+	}
 
 	fmt.Println(strings.Repeat("#", 120))
 	fmt.Println(strings.Repeat("#", 120))
@@ -79,9 +90,22 @@ func notify(size Size) {
 		app := pushover.New(os.Getenv("PUSHOVER_APP_TOKEN"))
 		recipient := pushover.NewRecipient(os.Getenv("PUSHOVER_USER_TOKEN"))
 
+		thumb := fmt.Sprintf("%s.png", prod.Id)
+
+		file, err := os.Open(thumb)
+
+		if err != nil && prod.FirstImageUrl != "" {
+			file, err = downloadFile(thumb, prod.FirstImageUrl)
+		}
+
 		message := pushover.NewMessage(msg.Body)
 		message.Title = msg.Title
 		message.URL = msg.Url
+
+		if err := message.AddAttachment(file); err != nil {
+			log.Println("error attaching pushover file")
+			log.Println(err)
+		}
 
 		if _, err := app.SendMessage(message, recipient); err != nil {
 			log.Println("error sending pushover notification")
@@ -95,6 +119,8 @@ func main() {
 		log.Fatal("Error loading .env file")
 	}
 
+	urls := strings.Split(os.Getenv("NIKE_URLS"), ",")
+
 	interval, _ := strconv.ParseInt(os.Getenv("INTERVAL"), 10, 0)
 	fmt.Printf("looping in %d seconds\n", interval)
 
@@ -102,12 +128,15 @@ func main() {
 	fmt.Printf("searching for sizes %s\n", strings.Join(sizes, ", "))
 
 	for {
-		check(sizes)
+		for _, url := range urls {
+			check(url, sizes)
+		}
+
 		time.Sleep(time.Duration(interval) * time.Second)
 	}
 }
 
-func check(csizes []string) {
+func check(url string, csizes []string) {
 	search := make(map[string]bool)
 
 	for _, csize := range csizes {
@@ -118,7 +147,7 @@ func check(csizes []string) {
 		Timeout: time.Second * 5,
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, os.Getenv("NIKE_URL"), nil)
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
 
 	res, err := client.Do(req)
 	if err != nil {
@@ -155,41 +184,67 @@ func check(csizes []string) {
 
 	var sizes []Size
 
-	for _, sku := range data.Threads.Products.AirForceOne.Skus {
+	for _, prod := range data.Threads.Products {
 
-		tsize := Size{
-			Id:       sku.SkuId,
-			NikeSize: sku.NikeSize,
-			EuSize:   sku.LocalizedSize,
-		}
+		for _, sku := range prod.Skus {
 
-		for _, asku := range data.Threads.Products.AirForceOne.AvailableSkus {
-			if asku.SkuId == tsize.Id {
-				tsize.Available = asku.Available
-				break
+			tsize := Size{
+				Id:       sku.SkuId,
+				NikeSize: sku.NikeSize,
+				EuSize:   sku.LocalizedSize,
 			}
+
+			for _, asku := range prod.AvailableSkus {
+				if asku.SkuId == tsize.Id {
+					tsize.Available = asku.Available
+					break
+				}
+			}
+
+			sizes = append(sizes, tsize)
 		}
 
-		sizes = append(sizes, tsize)
-	}
+		var found bool
 
-	var found bool
-
-	for _, size := range sizes {
-		if search[size.EuSize] && size.Available {
-			notify(size)
-			found = true
-		}
-	}
-
-	if !found {
-		var avs []string
 		for _, size := range sizes {
-			if size.Available {
-				avs = append(avs, size.EuSize)
+			if search[size.EuSize] && size.Available {
+				notify(prod, size)
+				found = true
 			}
 		}
 
-		fmt.Printf("out of stock... (%s)\n", strings.Join(avs, ", "))
+		if !found {
+			var avs []string
+			for _, size := range sizes {
+				if size.Available {
+					avs = append(avs, size.EuSize)
+				}
+			}
+
+			fmt.Printf("[%s] out of stock... (%s)\n", prod.Title, strings.Join(avs, ", "))
+		}
 	}
+}
+
+func downloadFile(filepath string, url string) (*os.File, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	out, err := os.Create(filepath)
+	if err != nil {
+		return nil, err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+
+	file, err := os.Open(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, err
 }
