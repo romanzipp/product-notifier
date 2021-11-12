@@ -171,13 +171,7 @@ func check(prod *Product) {
 		}
 	}
 
-	var found bool
-
 	for _, size := range prod.Sizes {
-		if size.Available {
-			found = true
-		}
-
 		if size.Available != size.PreviouslyAvailable {
 			if size.Available {
 				notify(prod, size, true)
@@ -191,16 +185,14 @@ func check(prod *Product) {
 		size.PreviouslyAvailable = size.Available
 	}
 
-	if !found {
-		var avs []string
-		for _, size := range tmpSizes {
-			if size.Available {
-				avs = append(avs, size.EuSize)
-			}
+	var avs []string
+	for _, size := range tmpSizes {
+		if size.Available {
+			avs = append(avs, size.EuSize)
 		}
-
-		log.Printf("[%s] out of stock... (%s)\n", prod.VendorProduct.Title, strings.Join(avs, ", "))
 	}
+
+	log.Printf("[%s] found sizes: %s\n", prod.VendorProduct.Title, strings.Join(avs, ", "))
 }
 
 func downloadFile(filepath string, url string) (*os.File, error) {
