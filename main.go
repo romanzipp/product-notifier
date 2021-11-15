@@ -56,6 +56,7 @@ func main() {
 		var sizes []*Size
 		product := &Product{
 			Title: prod.Title,
+			Image: prod.Image,
 		}
 
 		for _, prov := range prod.Providers {
@@ -118,7 +119,7 @@ func (av Availability) notify(size *Size, up bool) {
 	if up {
 		msg = Message{
 			Title:        fmt.Sprintf("⚠️ %s", av.Product.Title),
-			Body:         fmt.Sprintf("Size %s NOW AVAILABLE", size.GetEuSize()),
+			Body:         fmt.Sprintf("Size %s NOW AVAILABLE on %s", size.GetEuSize(), av.Provider.GetId()),
 			Url:          av.Provider.GetUrl(),
 			IncludeImage: true,
 		}
@@ -161,17 +162,22 @@ func (av Availability) notify(size *Size, up bool) {
 		message.Title = msg.Title
 		message.URL = msg.Url
 
-		if msg.IncludeImage {
+		if msg.IncludeImage && av.Product.Image != "" {
 			thumb := fmt.Sprintf("%s.png", av.Product.Title)
-			file, err := os.Open(thumb)
 
-			if err != nil && av.Product.Image != "" {
+			file, err := os.Open(thumb)
+			if err != nil {
 				file, err = downloadFile(thumb, av.Product.Image)
 				if err != nil {
-					if err := message.AddAttachment(file); err != nil {
-						log.Println("error attaching pushover file")
-						log.Println(err)
-					}
+					log.Println("error downloading thumbnail")
+					log.Println(err)
+				}
+			}
+
+			if file != nil {
+				if err = message.AddAttachment(file); err != nil {
+					log.Println("error attaching pushover file")
+					log.Println(err)
 				}
 			}
 		}
