@@ -6,6 +6,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -16,12 +17,6 @@ type Zalando struct {
 }
 
 type ZalandoData struct {
-	Threads struct {
-		Products map[string]NikeProduct `json:"products"`
-	} `json:"Threads"`
-}
-
-type ProductInfo struct {
 	Data struct {
 		Context struct {
 			EntityId string `json:"entity_id"`
@@ -77,27 +72,43 @@ func (provider Zalando) Check(av *Availability) {
 		}
 
 		for _, value := range content.GraphqlCache {
-			fmt.Println("---------------------------------------------------------")
-
 			data, _ := json.Marshal(value)
-			//fmt.Println(string(data))
-
-			var info ProductInfo
+			var info ZalandoData
 
 			if err := json.Unmarshal(data, &info); err != nil {
 				fmt.Println(err)
 			}
 
-			//fmt.Printf("%s\n", pi.Data.Context.EntityId)
-
 			if info.Data.Context.EntityId == "" {
 				continue
 			}
 
-			for _, s := range info.Data.Context.Simples {
-				fmt.Printf("%s :: %s\n", s.Size, s.Offer.Stock.Quantity)
+			for _, zalSize := range info.Data.Context.Simples {
+				for _, size := range av.Sizes {
+					if size.EuSize == zalSize.Size {
+						size.Available = zalSize.Offer.Stock.Quantity != "OUT_OF_STOCK"
+
+						if size.Available != size.PreviouslyAvailable {
+							if size.Available {
+								av.notify(size, true)
+							} else {
+								av.notify(size, false)
+							}
+
+							size.PreviouslyAvailable = size.Available
+						}
+					}
+				}
 			}
-			//fmt.Printf("\n\n%v\n", info)
+
+			var logStr []string
+			for _, zalSize := range info.Data.Context.Simples {
+				if zalSize.Offer.Stock.Quantity != "OUT_OF_STOCK" {
+					logStr = append(logStr, zalSize.Size)
+				}
+			}
+
+			av.Log(fmt.Sprintf("found %s\n", strings.Join(logStr, ", ")))
 		}
 	})
 }
