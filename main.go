@@ -63,17 +63,17 @@ func main() {
 			var provider IProvider
 
 			switch prov.Id {
-			case PROVIDER_NIKE:
+			case ProviderNike:
 				provider = Nike{
 					Provider{
-						Id:  PROVIDER_NIKE,
+						Id:  ProviderNike,
 						Url: prov.Url,
 					},
 				}
-			case PROVIDER_ZALANDO:
+			case ProviderZalando:
 				provider = Zalando{
 					Provider{
-						Id:  PROVIDER_ZALANDO,
+						Id:  ProviderZalando,
 						Url: prov.Url,
 					},
 				}
