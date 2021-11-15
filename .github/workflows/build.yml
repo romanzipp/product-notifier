@@ -8,19 +8,19 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
-      - run: go build *.go
+      - run: go build -o app .
       - uses: actions/upload-artifact@v2
         with:
           name: macos
-          path: main
+          path: app
 
   build-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
-      - run: go build main.go
+      - run: go build -o app .
       - uses: actions/upload-artifact@v2
         with:
           name: linux
-          path: main
+          path: app
