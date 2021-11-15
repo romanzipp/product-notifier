@@ -48,18 +48,18 @@ type NikeProduct struct {
 	} `json:"availableSkus"`
 }
 
-type TmpSize struct {
+type NikeSize struct {
 	Size      string
 	Available bool
 }
 
-func (provider Nike) Check(prod *Product) {
+func (provider Nike) Check(av *Availability) {
 	client := http.Client{
 		Timeout: time.Second * 5,
 	}
 
 	// execute request
-	req, _ := http.NewRequest(http.MethodGet, prod.Provider.GetUrl(), nil)
+	req, _ := http.NewRequest(http.MethodGet, av.Provider.GetUrl(), nil)
 	res, err := client.Do(req)
 	if err != nil {
 		log.Println("error sending request")
@@ -93,48 +93,54 @@ func (provider Nike) Check(prod *Product) {
 		return
 	}
 
-	//log.Printf("%v", content)
+	var nikeSizes []NikeSize
 
 	// pull the first and hopefully only product from content
 	for _, vendorProduct := range content.Threads.Products {
-		var tmpSizes []TmpSize
-
 		// iterate through all listed sizes
 		for _, sku := range vendorProduct.Skus {
 			// iterate through all available sizes stored in another map
 			for _, availableSku := range vendorProduct.AvailableSkus {
-				if availableSku.SkuId == sku.SkuId {
+				// skip if available sku does not match to iterating sku
+				if availableSku.SkuId != sku.SkuId {
+					continue
+				}
 
-					if sku.LocalizedSize == prod.Size.GetEuSize() {
-						prod.Available = availableSku.Available
+				nikeSizes = append(nikeSizes, NikeSize{
+					Size:      sku.LocalizedSize,
+					Available: availableSku.Available,
+				})
+			}
+		}
 
-						if prod.Available != prod.PreviouslyAvailable {
-							if prod.Available {
-								prod.notify(true)
-							} else {
-								prod.notify(false)
-							}
+		for _, nSize := range nikeSizes {
+			for _, size := range av.Sizes {
+				if nSize.Size != size.EuSize {
+					continue
+				}
 
-							prod.PreviouslyAvailable = prod.Available
-						}
+				size.Available = nSize.Available
+
+				if size.Available != size.PreviouslyAvailable {
+					if size.Available {
+						av.notify(size, true)
+					} else {
+						av.notify(size, false)
 					}
 
-					tmpSizes = append(tmpSizes, TmpSize{
-						Size:      sku.LocalizedSize,
-						Available: availableSku.Available,
-					})
+					size.PreviouslyAvailable = size.Available
 				}
 			}
 		}
 
-		var avs []string
-		for _, size := range tmpSizes {
+		var logStr []string
+		for _, size := range nikeSizes {
 			if size.Available {
-				avs = append(avs, size.Size)
+				logStr = append(logStr, size.Size)
 			}
 		}
 
-		prod.Log(fmt.Sprintf("found %s\n", strings.Join(avs, ", ")))
+		av.Log(fmt.Sprintf("found %s\n", strings.Join(logStr, ", ")))
 
 		// the products map should only contain one index, so fuck everything else
 		break

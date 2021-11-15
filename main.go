@@ -15,16 +15,28 @@ import (
 )
 
 type Product struct {
-	Title               string
-	Image               string
-	Size                Size
-	Provider            IProvider
-	Available           bool
-	PreviouslyAvailable bool
+	Title string
+	Image string
+}
+
+type Availability struct {
+	Product  *Product
+	Sizes    []*Size
+	Provider IProvider
+}
+
+func (av *Availability) Check() {
+	av.Provider.Check(av)
+}
+
+func (av *Availability) Log(line string) {
+	log.Printf("[%s] %s :: %s", av.Provider.GetId(), av.Product.Title, line)
 }
 
 type Size struct {
-	EuSize string
+	EuSize              string
+	Available           bool
+	PreviouslyAvailable bool
 }
 
 func (size Size) GetEuSize() string {
@@ -38,38 +50,48 @@ func main() {
 
 	cfg := config.ReadConfig()
 
-	var products []*Product
+	var availabilities []*Availability
 
 	for _, prod := range cfg.Products {
-		for _, size := range prod.Sizes {
-			for _, prov := range prod.Providers {
-				var provider IProvider
+		var sizes []*Size
+		product := &Product{
+			Title: prod.Title,
+		}
 
-				switch prov.Id {
-				case PROVIDER_NIKE:
-					provider = Nike{
-						Provider{
-							Id:  PROVIDER_NIKE,
-							Url: prov.Url,
-						},
-					}
+		for _, prov := range prod.Providers {
+			var provider IProvider
+
+			switch prov.Id {
+			case PROVIDER_NIKE:
+				provider = Nike{
+					Provider{
+						Id:  PROVIDER_NIKE,
+						Url: prov.Url,
+					},
 				}
+			default:
+				log.Fatalf("unknown provider: %s", prov.Id)
+			}
 
-				products = append(products, &Product{
-					Title:    prod.Title,
-					Image:    prod.Image,
-					Size:     Size{size},
-					Provider: provider,
+			for _, size := range prod.Sizes {
+				sizes = append(sizes, &Size{
+					EuSize: size,
 				})
 			}
+
+			availabilities = append(availabilities, &Availability{
+				Product:  product,
+				Sizes:    sizes,
+				Provider: provider,
+			})
 		}
 	}
 
 	log.Printf("looping in %d seconds\n", cfg.LoopInterval)
 
 	for {
-		for _, prod := range products {
-			prod.Provider.Check(prod)
+		for _, av := range availabilities {
+			av.Check()
 		}
 
 		time.Sleep(time.Duration(cfg.LoopInterval) * time.Second)
@@ -83,24 +105,20 @@ type Message struct {
 	IncludeImage bool
 }
 
-func (prod Product) Log(line string) {
-	log.Printf("[%s] %s :: size %s :: %s", prod.Provider.GetId(), prod.Title, prod.Size.GetEuSize(), line)
-}
-
-func (prod Product) notify(up bool) {
+func (av Availability) notify(size *Size, up bool) {
 	var msg Message
 
 	if up {
 		msg = Message{
-			Title:        fmt.Sprintf("⚠️ %s", prod.Title),
-			Body:         fmt.Sprintf("Größe %s jetzt verfügbar", prod.Size.GetEuSize()),
-			Url:          os.Getenv("NIKE_URL"),
+			Title:        fmt.Sprintf("⚠️ %s", av.Product.Title),
+			Body:         fmt.Sprintf("Size %s NOW AVAILABLE", size.GetEuSize()),
+			Url:          av.Provider.GetUrl(),
 			IncludeImage: true,
 		}
 	} else {
 		msg = Message{
-			Title: fmt.Sprintf("%s ausverkauft 🙄", prod.Title),
-			Body:  fmt.Sprintf("Größe %s nicht mehr verfügbar", prod.Size.GetEuSize()),
+			Title: fmt.Sprintf("%s sold out 🙄", av.Product.Title),
+			Body:  fmt.Sprintf("Größe %s nicht mehr verfügbar", size.GetEuSize()),
 			Url:   os.Getenv("NIKE_URL"),
 		}
 	}
@@ -137,11 +155,11 @@ func (prod Product) notify(up bool) {
 		message.URL = msg.Url
 
 		if msg.IncludeImage {
-			thumb := fmt.Sprintf("%s.png", prod.Title)
+			thumb := fmt.Sprintf("%s.png", av.Product.Title)
 			file, err := os.Open(thumb)
 
-			if err != nil && prod.Image != "" {
-				file, err = downloadFile(thumb, prod.Image)
+			if err != nil && av.Product.Image != "" {
+				file, err = downloadFile(thumb, av.Product.Image)
 			}
 
 			if err := message.AddAttachment(file); err != nil {

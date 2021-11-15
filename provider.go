@@ -6,7 +6,7 @@ type Provider struct {
 }
 
 type IProvider interface {
-	Check(*Product)
+	Check(*Availability)
 	GetId() string
 	GetUrl() string
 }
