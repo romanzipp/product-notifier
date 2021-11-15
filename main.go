@@ -167,11 +167,12 @@ func (av Availability) notify(size *Size, up bool) {
 
 			if err != nil && av.Product.Image != "" {
 				file, err = downloadFile(thumb, av.Product.Image)
-			}
-
-			if err := message.AddAttachment(file); err != nil {
-				log.Println("error attaching pushover file")
-				log.Println(err)
+				if err != nil {
+					if err := message.AddAttachment(file); err != nil {
+						log.Println("error attaching pushover file")
+						log.Println(err)
+					}
+				}
 			}
 		}
 
