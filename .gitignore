@@ -3,3 +3,4 @@ main
 .idea
 *.png
 app
+config.json
