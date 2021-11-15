@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-const PROVIDER_NIKE = "nike"
+const ProviderNike = "nike"
 
 type Nike struct {
 	Provider
@@ -133,14 +133,14 @@ func (provider Nike) Check(av *Availability) {
 			}
 		}
 
-		var logStr []string
+		var availableSizes []string
 		for _, size := range nikeSizes {
 			if size.Available {
-				logStr = append(logStr, size.Size)
+				availableSizes = append(availableSizes, size.Size)
 			}
 		}
 
-		av.Log(fmt.Sprintf("found %s\n", strings.Join(logStr, ", ")))
+		av.Log(fmt.Sprintf("found %s\n", strings.Join(availableSizes, ", ")))
 
 		// the products map should only contain one index, so fuck everything else
 		break
