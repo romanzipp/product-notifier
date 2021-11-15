@@ -69,6 +69,13 @@ func main() {
 						Url: prov.Url,
 					},
 				}
+			case PROVIDER_ZALANDO:
+				provider = Zalando{
+					Provider{
+						Id:  PROVIDER_ZALANDO,
+						Url: prov.Url,
+					},
+				}
 			default:
 				log.Fatalf("unknown provider: %s", prov.Id)
 			}
