@@ -87,8 +87,6 @@ func main() {
 
 	for {
 		for _, av := range availabilities {
-			av.Log(av.Provider.GetUrl())
-
 			sizes, err := av.Provider.GetAvailableSizes()
 			if err != nil {
 				av.Log(fmt.Sprintf("error: %s", err.Error()))
