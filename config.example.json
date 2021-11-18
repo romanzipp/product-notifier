@@ -23,12 +23,12 @@
       ],
       "providers": [
         {
-          "id": "zalando",
-          "url": "https://www.zalando.de/nike-sportswear-air-force-1-sneaker-high-summit-whitesailblack-ni111a0z6-a11.html?size=36&allophones=0"
-        },
-        {
           "id": "nike",
           "url": "https://www.nike.com/de/t/air-force-1-high-utility-2-damenschuh-lkNqX7"
+        },
+        {
+          "id": "zalando",
+          "url": "https://www.zalando.de/nike-sportswear-air-force-1-sneaker-high-summit-whitesailblack-ni111a0z6-a11.html?size=36&allophones=0"
         }
       ]
     }
