@@ -128,6 +128,7 @@ func main() {
 			}
 		}
 
+		fmt.Println("")
 		time.Sleep(time.Duration(cfg.LoopInterval) * time.Second)
 	}
 }
