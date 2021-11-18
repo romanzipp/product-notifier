@@ -133,14 +133,10 @@ func main() {
 }
 
 func (av Availability) notify(msg Message) {
-	log.Println(strings.Repeat("#", 120))
-	log.Println(strings.Repeat("#", 120))
-	log.Println("")
-	log.Printf("  %s\n", msg.Title)
-	log.Printf("  %s\n", msg.Body)
-	log.Println("")
-	log.Println(strings.Repeat("#", 120))
-	log.Println(strings.Repeat("#", 120))
+	av.Log(strings.Repeat("#", 120))
+	av.Log(fmt.Sprintf("## %s", msg.Title))
+	av.Log(fmt.Sprintf("## %s", msg.Body))
+	av.Log(strings.Repeat("#", 120))
 
 	go func() {
 		note := gosxnotifier.NewNotification(msg.Body)
