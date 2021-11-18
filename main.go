@@ -117,8 +117,8 @@ func main() {
 						} else {
 							av.notify(Message{
 								Title: fmt.Sprintf("%s sold out 🙄", av.Product.Title),
-								Body:  fmt.Sprintf("Größe %s nicht mehr verfügbar", size.GetEuSize()),
-								Url:   os.Getenv("NIKE_URL"),
+								Body:  fmt.Sprintf("Size %s sold out", size.GetEuSize()),
+								Url:   av.Provider.GetUrl(),
 							})
 						}
 
