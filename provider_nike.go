@@ -2,12 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"regexp"
-	"strings"
 	"time"
 )
 
@@ -53,18 +52,16 @@ type NikeSize struct {
 	Available bool
 }
 
-func (provider Nike) Check(av *Availability) {
+func (provider Nike) GetAvailableSizes() ([]string, error) {
 	client := http.Client{
 		Timeout: time.Second * 5,
 	}
 
 	// execute request
-	req, _ := http.NewRequest(http.MethodGet, av.Provider.GetUrl(), nil)
+	req, _ := http.NewRequest(http.MethodGet, provider.GetUrl(), nil)
 	res, err := client.Do(req)
 	if err != nil {
-		log.Println("error sending request")
-		log.Println(err)
-		return
+		return nil, errors.New(fmt.Sprintf("error sending request: %s", err.Error()))
 	}
 
 	if res.Body != nil {
@@ -74,26 +71,23 @@ func (provider Nike) Check(av *Availability) {
 	// unpack body stream
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		log.Println("error reading response")
-		return
+		return nil, errors.New("error reading response")
 	}
 
 	// parse content via regex pattern
 	matches := regexp.MustCompile(`<script>window\.INITIAL_REDUX_STATE=(.*);</script>`).FindStringSubmatch(string(body))
 	if len(matches) != 2 {
-		log.Println("error finding website content data")
-		return
+		return nil, errors.New("error finding website content data")
 	}
 
 	content := NikeData{}
 
 	// unpack data to content struct
 	if err = json.Unmarshal([]byte(matches[1]), &content); err != nil {
-		log.Println("error unmarshalling json")
-		return
+		return nil, errors.New("error unmarshalling json")
 	}
 
-	var nikeSizes []NikeSize
+	var availableSizes []string
 
 	// pull the first and hopefully only product from content
 	for _, vendorProduct := range content.Threads.Products {
@@ -106,44 +100,15 @@ func (provider Nike) Check(av *Availability) {
 					continue
 				}
 
-				nikeSizes = append(nikeSizes, NikeSize{
-					Size:      sku.LocalizedSize,
-					Available: availableSku.Available,
-				})
-			}
-		}
-
-		for _, nSize := range nikeSizes {
-			for _, size := range av.Sizes {
-				if nSize.Size != size.EuSize {
-					continue
-				}
-
-				size.Available = nSize.Available
-
-				if size.Available != size.PreviouslyAvailable {
-					if size.Available {
-						av.notify(size, true)
-					} else {
-						av.notify(size, false)
-					}
-
-					size.PreviouslyAvailable = size.Available
+				if availableSku.Available {
+					availableSizes = append(availableSizes, sku.LocalizedSize)
 				}
 			}
 		}
-
-		var availableSizes []string
-		for _, size := range nikeSizes {
-			if size.Available {
-				availableSizes = append(availableSizes, size.Size)
-			}
-		}
-
-		av.Log(fmt.Sprintf("found %s\n", strings.Join(availableSizes, ", ")))
 
 		// the products map should only contain one index, so fuck everything else
 		break
 	}
 
+	return availableSizes, nil
 }

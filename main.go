@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,10 +26,6 @@ type Availability struct {
 	Provider IProvider
 }
 
-func (av *Availability) Check() {
-	av.Provider.Check(av)
-}
-
 func (av *Availability) Log(line string) {
 	log.Printf("[%s] %s :: %s", av.Provider.GetId(), av.Product.Title, line)
 }
@@ -41,6 +38,13 @@ type Size struct {
 
 func (size Size) GetEuSize() string {
 	return size.EuSize
+}
+
+type Message struct {
+	Title        string
+	Body         string
+	Url          string
+	IncludeImage bool
 }
 
 func main() {
@@ -60,25 +64,9 @@ func main() {
 		}
 
 		for _, prov := range prod.Providers {
-			var provider IProvider
-
-			switch prov.Id {
-			case ProviderNike:
-				provider = Nike{
-					Provider{
-						Id:  ProviderNike,
-						Url: prov.Url,
-					},
-				}
-			case ProviderZalando:
-				provider = Zalando{
-					Provider{
-						Id:  ProviderZalando,
-						Url: prov.Url,
-					},
-				}
-			default:
-				log.Fatalf("unknown provider: %s", prov.Id)
+			provider, err := GetProviderById(prov.Id, prov.Url)
+			if err != nil {
+				log.Fatalf("unknown provider: %s\n", prov.Id)
 			}
 
 			for _, size := range prod.Sizes {
@@ -99,38 +87,52 @@ func main() {
 
 	for {
 		for _, av := range availabilities {
-			av.Check()
+			av.Log(av.Provider.GetUrl())
+
+			sizes, err := av.Provider.GetAvailableSizes()
+			if err != nil {
+				av.Log(fmt.Sprintf("error: %s", err.Error()))
+			} else if len(sizes) == 0 {
+				av.Log("no sizes")
+			} else {
+				av.Log(fmt.Sprintf("available sizes: %s", strings.Join(sizes, ", ")))
+
+				for _, size := range av.Sizes {
+					for _, avSize := range sizes {
+						if avSize == size.EuSize {
+							size.Available = true
+						}
+					}
+
+					if size.Available != size.PreviouslyAvailable {
+						av.Log(fmt.Sprintf("size %s :: availability %s -> %s", size.EuSize, strconv.FormatBool(size.PreviouslyAvailable), strconv.FormatBool(size.Available)))
+
+						if size.Available {
+							av.notify(Message{
+								Title:        fmt.Sprintf("⚠️ %s", av.Product.Title),
+								Body:         fmt.Sprintf("Size %s NOW AVAILABLE on %s", size.GetEuSize(), av.Provider.GetId()),
+								Url:          av.Provider.GetUrl(),
+								IncludeImage: true,
+							})
+						} else {
+							av.notify(Message{
+								Title: fmt.Sprintf("%s sold out 🙄", av.Product.Title),
+								Body:  fmt.Sprintf("Größe %s nicht mehr verfügbar", size.GetEuSize()),
+								Url:   os.Getenv("NIKE_URL"),
+							})
+						}
+
+						size.PreviouslyAvailable = size.Available
+					}
+				}
+			}
 		}
 
 		time.Sleep(time.Duration(cfg.LoopInterval) * time.Second)
 	}
 }
 
-type Message struct {
-	Title        string
-	Body         string
-	Url          string
-	IncludeImage bool
-}
-
-func (av Availability) notify(size *Size, up bool) {
-	var msg Message
-
-	if up {
-		msg = Message{
-			Title:        fmt.Sprintf("⚠️ %s", av.Product.Title),
-			Body:         fmt.Sprintf("Size %s NOW AVAILABLE on %s", size.GetEuSize(), av.Provider.GetId()),
-			Url:          av.Provider.GetUrl(),
-			IncludeImage: true,
-		}
-	} else {
-		msg = Message{
-			Title: fmt.Sprintf("%s sold out 🙄", av.Product.Title),
-			Body:  fmt.Sprintf("Größe %s nicht mehr verfügbar", size.GetEuSize()),
-			Url:   os.Getenv("NIKE_URL"),
-		}
-	}
-
+func (av Availability) notify(msg Message) {
 	log.Println(strings.Repeat("#", 120))
 	log.Println(strings.Repeat("#", 120))
 	log.Println("")

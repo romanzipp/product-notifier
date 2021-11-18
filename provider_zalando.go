@@ -2,11 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
-	"log"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -38,31 +37,31 @@ type ZalandoScriptContent struct {
 	GraphqlCache map[string]interface{} `json:"graphqlCache"`
 }
 
-func (provider Zalando) Check(av *Availability) {
+func (provider Zalando) GetAvailableSizes() ([]string, error) {
 	client := http.Client{
 		Timeout: time.Second * 5,
 	}
 
 	// execute request
-	req, _ := http.NewRequest(http.MethodGet, av.Provider.GetUrl(), nil)
+	req, _ := http.NewRequest(http.MethodGet, provider.GetUrl(), nil)
 	res, err := client.Do(req)
 	if err != nil {
-		log.Println("error sending request")
-		log.Println(err)
-		return
+		return nil, errors.New(fmt.Sprintf("error sending request: %s", err.Error()))
 	}
 
 	if res.Body != nil {
 		defer res.Body.Close()
 	}
 
-	// Load the HTML document
+	// load the HTML document
 	doc, err := goquery.NewDocumentFromReader(res.Body)
 	if err != nil {
-		log.Fatal(err)
+		return nil, errors.New("error loading html document")
 	}
 
-	// Find the review items
+	var availableSizes []string
+
+	// find item
 	doc.Find("script[data-re-asset].re-1-12").Each(func(i int, s *goquery.Selection) {
 		// get script contents from selection, should be json
 		html := s.Text()
@@ -89,32 +88,13 @@ func (provider Zalando) Check(av *Availability) {
 			}
 
 			for _, zalSize := range info.Data.Context.Simples {
-				for _, size := range av.Sizes {
-					if size.EuSize == zalSize.Size {
-						// quantity can be OUT_OF_STOCK, ONE, TWO, MANY
-						size.Available = zalSize.Offer.Stock.Quantity != "OUT_OF_STOCK"
-
-						if size.Available != size.PreviouslyAvailable {
-							if size.Available {
-								av.notify(size, true)
-							} else {
-								av.notify(size, false)
-							}
-
-							size.PreviouslyAvailable = size.Available
-						}
-					}
-				}
-			}
-
-			var availableSizes []string
-			for _, zalSize := range info.Data.Context.Simples {
+				// quantity can be OUT_OF_STOCK, ONE, TWO, MANY
 				if zalSize.Offer.Stock.Quantity != "OUT_OF_STOCK" {
 					availableSizes = append(availableSizes, zalSize.Size)
 				}
 			}
-
-			av.Log(fmt.Sprintf("found %s\n", strings.Join(availableSizes, ", ")))
 		}
 	})
+
+	return availableSizes, nil
 }
