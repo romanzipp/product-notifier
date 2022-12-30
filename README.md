@@ -11,6 +11,24 @@ go build -o app .
 ./app
 ```
 
+## Docker
+
+#### Build
+
+```shell
+docker build -t product-notifier:latest .
+```
+
+#### Run
+
+```shell
+docker run \
+  -v "$(pwd)/.env:/.env" \
+  -v "$(pwd)/config.json:/config.json" \
+  product-notifier:latest
+```
+
+
 ## Configuration
 
 - Copy [.env.example](.env.example) to **.env**

@@ -31,6 +31,34 @@
           "url": "https://www.zalando.de/nike-sportswear-air-force-1-sneaker-high-summit-whitesailblack-ni111a0z6-a11.html?size=36&allophones=0"
         }
       ]
+    },
+    {
+      "title": "Air Force 1 Low Billie Mushroom",
+      "img": "https://static.nike.com/a/images/t_prod_ss/w_640,c_limit,f_auto/2d02f0ee-36ee-46df-b169-8d50aad7a5e7/air-force-1-low-billie-mushroom-dq4137-200-%E2%80%93-erscheinungsdatum.jpg",
+      "sizes": [
+        "44",
+        "43.5"
+      ],
+      "providers": [
+        {
+          "id": "nike",
+          "url": "https://www.nike.com/de/launch/t/air-force-1-low-billie-mushroom?sitesrc=snkrsIosShare"
+        }
+      ]
+    },
+    {
+      "title": "Air Force 1 Low Billie Sequoia",
+      "img": "https://static.nike.com/a/images/t_prod_ss/w_640,c_limit,f_auto/31030d62-d658-469f-9d92-c526e7797838/air-force-1-low-billie-sequoia-dq4137-300-%E2%80%93-erscheinungsdatum.jpg",
+      "sizes": [
+        "44",
+        "43.5"
+      ],
+      "providers": [
+        {
+          "id": "nike",
+          "url": "https://www.nike.com/de/launch/t/air-force-1-low-billie-sequoia"
+        }
+      ]
     }
   ]
 }
